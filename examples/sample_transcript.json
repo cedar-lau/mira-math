@@ -1,0 +1,5 @@
+[
+  {"agent_id": "A", "round": 1, "type": "request", "message": "I need the value of c.", "parsed": {"type": "request", "reasoning": "Solved a,b in terms of c.", "request": "the value of c"}},
+  {"agent_id": "B", "round": 1, "type": "offer", "message": "c = 6", "parsed": {"type": "offer", "has_exact_match": true, "constraint_quoted": "c = 6", "hint": "c = 6"}},
+  {"agent_id": "A", "round": 1, "type": "final", "message": "a=7, b=3, c=6", "parsed": {"type": "final", "reasoning": "With c=6, from a+b=10 and a-b-6=-2, solving: a=7, b=3.", "answer": {"a": 7, "b": 3, "c": 6}, "consistency_check": "7+3=10, 7-3-6=-2. Correct."}}
+]

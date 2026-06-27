@@ -1,0 +1,43 @@
+{
+  "id": "lin-000000",
+  "family": "linear_system_separator",
+  "difficulty": 1,
+  "n_agents": 2,
+  "answer_type": "dict_int",
+  "global_solution": {"a": 7, "b": 3, "c": 6},
+  "global_metadata": {
+    "variables": ["a", "b", "c"],
+    "domains": {"a": "Z", "b": "Z", "c": "Z"}
+  },
+  "agent_views": [
+    {
+      "agent_id": "A",
+      "private_data": {
+        "unknowns": ["a", "b", "c"],
+        "externals": [],
+        "constraints_text": ["a + b = 10", "a - b - c = -2"],
+        "constraints_machine": [
+          {"type": "lin_eq", "coeffs": {"a": 1, "b": 1, "c": 0}, "rhs": 10},
+          {"type": "lin_eq", "coeffs": {"a": 1, "b": -1, "c": -1}, "rhs": -2}
+        ]
+      }
+    },
+    {
+      "agent_id": "B",
+      "private_data": {
+        "unknowns": ["a", "b", "c"],
+        "externals": [],
+        "constraints_text": ["c = 6"],
+        "constraints_machine": [
+          {"type": "value", "var": "c", "value": 6}
+        ]
+      }
+    }
+  ],
+  "minimal_hint_spec": {
+    "k_min": 1,
+    "atomic_hints": [
+      {"hint_id": "h1", "kind": "value", "var": "c", "value": 6, "providers": ["B"], "consumers": ["A"]}
+    ]
+  }
+}
