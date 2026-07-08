@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mira-math"
 version = "0.1.0"
-description = "MIRA-Math: a minimal-information collaborative math reasoning benchmark for two-agent LLM systems."
+description = "MIRA-Math: a benchmark for minimal information requesting and mathematical reasoning under partial information."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
