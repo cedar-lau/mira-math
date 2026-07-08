@@ -138,7 +138,7 @@ python -m mira_math.generate \
   --n-b 50 \
   --difficulties 1,2,3 \
   --seed 1234 \
-  --out datasets/generated/mira_math_20_50_zs.jsonl
+  --out datasets/generated/family_types_20_50.jsonl
 ```
 
 Four-shot dataset:
@@ -151,14 +151,14 @@ python -m mira_math.generate \
   --difficulties 1,2,3 \
   --seed 1234 \
   --few-shot \
-  --out datasets/generated/mira_math_20_50_4s.jsonl
+  --out datasets/generated/family_types_20_50_few_shot.jsonl
 ```
 
 Validate either dataset with:
 
 ```bash
 python -m mira_math.validate \
-  --in datasets/generated/mira_math_20_50_zs.jsonl
+  --in datasets/generated/family_types_20_50.jsonl
 ```
 
 The typed generator creates:
@@ -189,7 +189,7 @@ Run a dataset sequentially:
 
 ```bash
 python examples/run_dataset_langgraph.py \
-  --in datasets/generated/mira_math_20_50_zs.jsonl \
+  --in datasets/generated/family_types_20_50.jsonl \
   --method llm \
   --model-a gpt-4o-mini \
   --model-b gpt-4o-mini \
@@ -202,7 +202,7 @@ Run a dataset in parallel:
 
 ```bash
 python examples/run_dataset_langgraph_parallel.py \
-  --in datasets/generated/mira_math_20_50_zs.jsonl \
+  --in datasets/generated/family_types_20_50.jsonl \
   --method llm \
   --model-a gpt-4o-mini \
   --model-b gpt-4o-mini \
@@ -217,7 +217,7 @@ Run a resilient multi-wave evaluation that retries unfinished instances:
 
 ```bash
 python examples/run_dataset_langgraph_resilient.py \
-  --in datasets/generated/mira_math_20_50_zs.jsonl \
+  --in datasets/generated/family_types_20_50.jsonl \
   --method llm \
   --model-a gpt-4o-mini \
   --model-b gpt-4o-mini \
