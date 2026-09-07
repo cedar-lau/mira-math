@@ -234,6 +234,47 @@ The runners save per-instance metrics, aggregate metrics, transcripts, and logs 
 
 ---
 
+## Oracle-hint baseline
+
+`acc_final` confounds three abilities: noticing that a fact is missing, asking
+for it in a way the responder accepts, and solving once the fact is in hand. The
+oracle-hint condition isolates the third. Agent A is handed the resolving fact up
+front and asked only to solve; Agent B is never called.
+
+```bash
+python examples/run_dataset_langgraph_parallel.py \
+  --in datasets/family_types_20_50.jsonl \
+  --oracle \
+  --method llm \
+  --model-a gpt-4o-mini \
+  --seed 1234 \
+  --workers 8 \
+  --log-dir logs \
+  --run-id gpt4omini_zs_oracle
+```
+
+The hint is delivered as a synthetic request/offer pair in Agent A's
+`shared_history`, so its prompt matches the state of a real run just after the
+responder has made an offer. The text is Agent B's own constraint string, which
+is not always how `apply_hint` renders the same fact; `mira_math.oracle`
+verifies for every instance that the fact flips Agent A's view from locally
+ill-posed to uniquely solvable before it is injected.
+
+Accuracy under this condition is an **upper bound** on protocol accuracy, and
+`oracle_accuracy - protocol_accuracy` attributes the gap to the request channel.
+It is an unconditional counterfactual over the whole dataset, not accuracy
+conditioned on the responder having made an offer -- the latter is biased by
+selection on Agent A's own request success.
+
+Request-channel metrics are meaningless without a request phase, so they are
+dropped rather than reported as zero: `hit_rate`, `first_request_success`,
+`request_attempts`, `decline_count`, `hints_used`, `hint_overuse`, and
+`requests_before_offer`. Results files from an oracle run carry
+`"condition": "oracle_hint"` and `"model_b": null`; the default protocol runs
+carry `"condition": "protocol"`.
+
+---
+
 ## Agent methods
 
 The runner supports three Agent-A methods:
@@ -260,6 +301,7 @@ mira_math/
   validate.py          # Deterministic instance validation CLI
   runner.py            # Backend-agnostic runner skeleton
   scoring.py           # Transcript-level and aggregate metrics
+  oracle.py            # Oracle-hint condition: hint selection, verification, metric stripping
   families/            # 22 mathematical family generators
   tools/               # Optional tools, currently including a deterministic calculator
   utils/               # Exact arithmetic, CRT, and polynomial helpers

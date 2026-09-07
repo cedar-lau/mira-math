@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from mira_math.scoring import score_transcript, aggregate_metrics
+from mira_math.oracle import strip_instance_metrics, strip_aggregate_metrics
 from mira_math.families import FAMILY_TYPES
 from run_helpers import print_metric_legend, print_dataset_distribution, print_type_difficulty_summary
 
@@ -152,6 +153,7 @@ def _run_sequential(
     seed: Optional[int],
     verbose: bool,
     log: logging.Logger,
+    oracle: bool = False,
     incr_metrics_path: Optional[str] = None,
     incr_transcripts_path: Optional[str] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, List[Dict[str, Any]]], bool]:
@@ -193,6 +195,7 @@ def _run_sequential(
                         seed=seed,
                         logger=log,
                         verbose=verbose,
+                        oracle=oracle,
                     )
                     last_error = None
                     break
@@ -228,6 +231,10 @@ def _run_sequential(
             else:
                 try:
                     metrics = score_transcript(instance, transcript)
+                    if oracle:
+                        metrics = strip_instance_metrics(
+                            metrics, transcript[0].get("injected_constraints", []) if transcript else [],
+                        )
                 except Exception as e:
                     log.error("Scoring failed for %s: %s", instance_id, e, exc_info=True)
                     metrics = {"acc_final": 0, "error": f"scoring failed: {e}"}
@@ -275,6 +282,7 @@ async def _run_parallel(
     workers: int,
     verbose: bool,
     log: logging.Logger,
+    oracle: bool = False,
     instance_timeout: int = 3600,
     incr_metrics_path: Optional[str] = None,
     incr_transcripts_path: Optional[str] = None,
@@ -316,10 +324,15 @@ async def _run_parallel(
                             seed,
                             log,
                             False,  # verbose suppressed in parallel to avoid interleaving
+                            oracle,
                         ),
                         timeout=instance_timeout,
                     )
                     metrics = score_transcript(instance, transcript)
+                    if oracle:
+                        metrics = strip_instance_metrics(
+                            metrics, transcript[0].get("injected_constraints", []) if transcript else [],
+                        )
                     metrics["family_type"] = family_type
                     metrics["instance_id"] = instance_id
                     break
@@ -430,6 +443,11 @@ def main() -> None:
                         help="Show detailed traces of agent reasoning (react/reflexion internals)")
     parser.add_argument("--instance-timeout", type=int, default=3600,
                         help="Per-instance wall-clock timeout in seconds for parallel mode (default: 3600)")
+    parser.add_argument("--oracle", action="store_true",
+                        help="Oracle-hint condition: pre-inject A's atomic hint into its own view "
+                             "and skip Agent B entirely. Measures solving ability in isolation and "
+                             "gives an upper bound on protocol accuracy. Request-channel metrics "
+                             "(hit_rate, first_request_success, ...) are omitted as meaningless.")
     args = parser.parse_args()
 
     _load_env()
@@ -445,7 +463,8 @@ def main() -> None:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     safe_a = model_a.replace("/", "_")
     safe_b = model_b.replace("/", "_")
-    run_id = args.run_id or f"{safe_a}_vs_{safe_b}_{dataset_name}_{timestamp}"
+    condition_tag = "oracle_" if args.oracle else ""
+    run_id = args.run_id or f"{condition_tag}{safe_a}_vs_{safe_b}_{dataset_name}_{timestamp}"
     os.makedirs(args.log_dir, exist_ok=True)
 
     log = logging.getLogger("MIRA_MATH_dataset")
@@ -468,6 +487,9 @@ def main() -> None:
     print(f"Run: {run_id} | Dataset: {args.input_file}")
     print(f"Models: A={model_a} B={model_b}")
     print(f"Method: {args.method} | Tools: {tools_str}")
+    if args.oracle:
+        print("Condition: ORACLE-HINT -- Agent A receives its atomic hint up front; "
+              "Agent B is not called. Request-channel metrics are omitted.")
     print(f"Running {len(instances)} instances")
     print(f"Incremental results: {incr_metrics_path}")
     print(f"Incremental transcripts: {incr_transcripts_path}")
@@ -484,6 +506,7 @@ def main() -> None:
                 _run_parallel(
                     instances, model_a, model_b, args.method, args.tools,
                     args.temperature, args.seed, workers, args.verbose, log,
+                    oracle=args.oracle,
                     instance_timeout=args.instance_timeout,
                     incr_metrics_path=incr_metrics_path,
                     incr_transcripts_path=incr_transcripts_path,
@@ -493,6 +516,7 @@ def main() -> None:
             all_metrics, all_transcripts, interrupted = _run_sequential(
                 instances, model_a, model_b, args.method, args.tools,
                 args.temperature, args.seed, args.verbose, log,
+                oracle=args.oracle,
                 incr_metrics_path=incr_metrics_path,
                 incr_transcripts_path=incr_transcripts_path,
             )
@@ -509,6 +533,8 @@ def main() -> None:
     all_metrics = [m for m in all_metrics if m]
 
     agg = aggregate_metrics(all_metrics) if all_metrics else {}
+    if args.oracle:
+        strip_aggregate_metrics(agg)
 
     results_path = os.path.join(args.log_dir, f"MIRA_MATH_{run_id}_results.jsonl")
     type_aggregates = {
@@ -540,12 +566,20 @@ def main() -> None:
             subset = [m for m in all_metrics if m.get("family") == fam and m.get("difficulty") == d]
             if subset:
                 diff_x_family_aggregates[f"{fam}_d{d}"] = aggregate_metrics(subset)
+    if args.oracle:
+        for bundle in (type_aggregates, diff_aggregates, family_aggregates,
+                       diff_x_type_aggregates, diff_x_family_aggregates):
+            for sub_agg in bundle.values():
+                strip_aggregate_metrics(sub_agg)
+
     with open(results_path, "w", encoding="utf-8") as f:
         json.dump({
             "run_id": run_id,
             "dataset": args.input_file,
+            "condition": "oracle_hint" if args.oracle else "protocol",
             "model_a": model_a,
-            "model_b": model_b,
+            # Agent B is never invoked in the oracle condition.
+            "model_b": None if args.oracle else model_b,
             "method": args.method,
             "tools": args.tools if args.tools else None,
             "interrupted": interrupted,

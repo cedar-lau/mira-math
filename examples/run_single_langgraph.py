@@ -44,6 +44,12 @@ from mira_math.agent_schema import (
     FinalMsgGemini,
     get_max_requests,
 )
+from mira_math.generate import _format_ideal_request
+from mira_math.oracle import (
+    build_oracle_instance,
+    select_b_resolving_constraint,
+    CONDITION_NAME,
+)
 from mira_math.prompts import (
     system_prompt_agent_a,
     system_prompt_agent_b,
@@ -1602,6 +1608,105 @@ def build_graph(
 # ---------------------------------------------------------------------------
 # Main Runner
 # ---------------------------------------------------------------------------
+
+def _run_oracle_instance(
+        instance: Dict[str, Any],
+        llm_a: BaseChatModel,
+        tools: List,
+        logger: logging.Logger,
+        method: str,
+        max_requests: int,
+        tool_names: Optional[List[str]],
+        verbose: bool,
+) -> List[Dict[str, Any]]:
+    """Run the oracle-hint condition for one instance.
+
+    Agent A is placed directly in the state a real run reaches after a
+    *successful* exchange: a synthetic request/offer pair is written into the
+    shared history, carrying the atomic hint in the family's canonical
+    notation, and A is asked for its final answer. Agent B is never invoked.
+
+    The hint is delivered through the shared history rather than by rewriting
+    A's private constraints. Both routes make the view well-posed, but only
+    this one reproduces the prompt framing of a real successful run: with an
+    empty history the prompt's "find what to request" scaffolding dominates and
+    A emits another request instead of an answer, which measures instruction
+    framing rather than solving ability.
+
+    The family's ``apply_hint`` is still used, as a verification gate and to
+    derive the canonical hint text, via `build_oracle_instance`.
+
+    Args:
+        instance: The mira_math instance to run.
+        llm_a: Chat model backing Agent A.
+        tools: Tool objects available to Agent A.
+        logger: Logger for run diagnostics.
+        method: Agent A reasoning method (recorded for transcript parity).
+        max_requests: Retry budget, recorded but unreachable in this condition.
+        tool_names: Tool names, recorded in the state for parity.
+        verbose: Whether to print prompt/response detail.
+
+    Returns:
+        A one-entry transcript containing Agent A's final message.
+    """
+    # Verifies the hint resolves A's ill-posedness and yields its canonical text.
+    _verified, injected = build_oracle_instance(instance, agent_id="A", verify=True)
+    # Deliver B's own wording: apply_hint's rendering is not always equivalent in
+    # difficulty to the constraint B actually holds (see select_b_resolving_constraint).
+    hint_texts, hint_source = select_b_resolving_constraint(instance, injected, agent_id="A")
+    hint_text = "; ".join(hint_texts)
+    request_text = _format_ideal_request(instance)
+
+    logger.info(
+        "Oracle condition on %s: replaying offer %r (source=%s) for request %r",
+        instance.get("id", "?"), hint_text, hint_source, request_text,
+    )
+
+    synthetic_request = {
+        "type": "request",
+        "reasoning": "Oracle condition: the resolving request is supplied, not inferred.",
+        "request": request_text,
+    }
+    synthetic_offer = {
+        "type": "offer",
+        "has_exact_match": True,
+        "constraint_quoted": hint_text,
+        "hint": hint_text,
+    }
+
+    state: MASState = {
+        "instance": instance,
+        "shared_history": [
+            {"from": "A", "message": synthetic_request},
+            {"from": "B", "message": synthetic_offer},
+        ],
+        "transcript": [],
+        # Must be > 1: prompts.py gates the closing instruction on attempt_num,
+        # emitting "identify the missing piece, then request it from Agent B" at
+        # attempt 1 and "you now have the missing piece -- solve" afterwards.
+        # At 1 the oracle is told to go request what it has already been given.
+        "request_count": 2,
+        "max_requests": max_requests,
+        "last_request": synthetic_request,
+        "phase": "final",
+        "got_hint": True,
+        "method": method,
+        "tools_used": tool_names or [],
+        "verbose": verbose,
+        "declined_requests": [],
+    }
+
+    final_state = agent_a_final(state, llm_a, tools, logger)
+    transcript = final_state["transcript"]
+    for entry in transcript:
+        entry["condition"] = CONDITION_NAME
+        entry["injected_constraints"] = hint_texts
+        entry["apply_hint_rendering"] = injected
+        entry["hint_source"] = hint_source
+        entry["oracle_request"] = request_text
+    return transcript
+
+
 def run_instance(
         instance: Dict[str, Any],
         model_a: str,
@@ -1612,17 +1717,30 @@ def run_instance(
         seed: Optional[int] = None,
         logger: Optional[logging.Logger] = None,
         verbose: bool = False,
+        oracle: bool = False,
 ) -> List[Dict[str, Any]]:
-    """Run a single mira_math instance and return the transcript."""
+    """Run a single mira_math instance and return the transcript.
+
+    Args:
+        oracle: If True, run the oracle-hint condition instead of the two-agent
+            protocol: Agent A's view is pre-augmented with its atomic hint and
+            Agent B is never called. Measures solving ability in isolation.
+    """
     if logger is None:
         logger = logging.getLogger("mira_math")
 
     llm_a = _make_llm(model_a, temperature, seed)
-    llm_b = _make_llm(model_b, temperature, seed)
     tools = _get_tools(tool_names)
 
     difficulty = instance.get("difficulty", 1)
     max_requests = get_max_requests(difficulty)
+
+    if oracle:
+        return _run_oracle_instance(
+            instance, llm_a, tools, logger, method, max_requests, tool_names, verbose,
+        )
+
+    llm_b = _make_llm(model_b, temperature, seed)
 
     tools_str = ", ".join(tool_names) if tool_names else "None"
     logger.info(
