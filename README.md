@@ -169,6 +169,18 @@ The typed generator creates:
 Total                                                   2,310 instances
 ```
 
+The evaluated datasets ship with the repository under `datasets/`. Verify them
+against `datasets/CHECKSUMS.txt` before a run:
+
+```bash
+sha256sum -c datasets/CHECKSUMS.txt
+```
+
+Generation is deterministic: the zero-shot command above reproduces
+`datasets/family_types_20_50.jsonl` byte for byte on the same platform. It is
+written to `datasets/generated/` so that a regenerated copy never overwrites
+the distributed, checksummed one.
+
 ---
 
 ## Run the reference protocol
@@ -189,7 +201,7 @@ Run a dataset sequentially:
 
 ```bash
 python examples/run_dataset_langgraph.py \
-  --in datasets/generated/family_types_20_50.jsonl \
+  --in datasets/family_types_20_50.jsonl \
   --method llm \
   --model-a gpt-4o-mini \
   --model-b gpt-4o-mini \
@@ -202,7 +214,7 @@ Run a dataset in parallel:
 
 ```bash
 python examples/run_dataset_langgraph_parallel.py \
-  --in datasets/generated/family_types_20_50.jsonl \
+  --in datasets/family_types_20_50.jsonl \
   --method llm \
   --model-a gpt-4o-mini \
   --model-b gpt-4o-mini \
@@ -217,7 +229,7 @@ Run a resilient multi-wave evaluation that retries unfinished instances:
 
 ```bash
 python examples/run_dataset_langgraph_resilient.py \
-  --in datasets/generated/family_types_20_50.jsonl \
+  --in datasets/family_types_20_50.jsonl \
   --method llm \
   --model-a gpt-4o-mini \
   --model-b gpt-4o-mini \

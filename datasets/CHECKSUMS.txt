@@ -1,0 +1,7 @@
+# SHA-256 checksums for the distributed MIRA-Math datasets.
+# Paths are relative to the repository root:
+#   sha256sum -c datasets/CHECKSUMS.txt
+78a021526f9457af6e3776ac470c4ef1202d18fd9a19539e7e289294997b2ad0  datasets/family_types_20_50.jsonl
+0f7f24a7a178ea4817867b9648908af1d9fd09c4fd53a5e79416e9fc868d6e0f  datasets/family_types_20_50_few_shot.jsonl
+a16b2543781e1ba3dcf83bcc246aabb106e75810e2a4615b096ec0c4c776c091  datasets/sample/sample_instance.json
+27b796b3adfab1d17475d97922747365b55ef858bbec7acca72981a805df8f80  datasets/sample/sample_transcript.json
